@@ -7,7 +7,7 @@ const AUTH_STORAGE_KEY = "faq-mgmt:auth-session:v1";
 const OWNER_EMAIL_KEY = "faq-mgmt:owner-email:v1";
 
 // Default owner email from project metadata or fallback
-export const DEFAULT_OWNER_EMAIL = "aumaoyaoao@gmail.com";
+export const DEFAULT_OWNER_EMAIL = "aumaoyaoao@gmail.com, aummonthira86@gmail.com";
 
 export interface AuthState {
   user: User | null;
