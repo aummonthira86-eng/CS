@@ -7,7 +7,18 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
+  nitro: {
+    preset: "node-server",
+  },
   vite: {
+    oxc: {
+      jsx: {
+        development: false,
+      },
+    },
+    esbuild: {
+      jsxDev: false,
+    },
     server: {
       host: "0.0.0.0",
       port: 3000,
