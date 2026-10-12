@@ -71,6 +71,7 @@ function RoleSwitch() {
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const isActive = useActive();
   const role = useRole();
+  const { isOwner, pendingCount } = useAuth();
 
   return (
     <nav className="space-y-1">
@@ -96,9 +97,13 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
               <Icon className="size-4 shrink-0" />
               <span>{label}</span>
             </div>
-            {isRestricted && (
+            {to === "/settings" && isOwner && pendingCount > 0 ? (
+              <span className="rounded-full bg-rose-500 text-white px-1.5 py-0.5 text-[10px] font-bold animate-pulse">
+                {pendingCount}
+              </span>
+            ) : isRestricted ? (
               <span className="text-[10px] opacity-60 font-normal">อ่านอย่างเดียว</span>
-            )}
+            ) : null}
           </Link>
         );
       })}

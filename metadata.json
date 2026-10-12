@@ -2,7 +2,5 @@
   "name": "CS FAQ Management",
   "description": "ระบบจัดการและค้นหาคำถามคำตอบภาษาไทยสำหรับเจ้าหน้าที่ Customer Support เกม",
   "version": "1.0.0",
-  "capabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

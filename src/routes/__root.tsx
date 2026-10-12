@@ -13,6 +13,7 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { AppShell } from "@/components/app-shell";
+import { AccessGate } from "@/components/auth/access-gate";
 import { Toaster } from "@/components/ui/sonner";
 import { themeStore } from "@/lib/theme/theme-store";
 import { authStore } from "@/lib/auth/auth-store";
@@ -158,10 +159,12 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <AppShell>
-        <Outlet />
-      </AppShell>
+      {/* AccessGate enforces login & approval requirement */}
+      <AccessGate>
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      </AccessGate>
       <Toaster richColors position="top-center" />
     </QueryClientProvider>
   );

@@ -128,12 +128,14 @@ export function AuthDialog({ trigger }: { trigger?: React.ReactNode }) {
     }
   };
 
-  const handleQuickLogin = (targetRole: "owner" | "viewer") => {
+  const handleQuickLogin = (targetRole: "owner" | "viewer" | "unapproved") => {
     authStore.loginAs(targetRole);
     if (targetRole === "owner") {
       toast.success("เข้าสู่ระบบในฐานะ: เจ้าของ (Owner) — มีสิทธิ์แก้ไขเว็บไซต์ได้ทั้งหมด");
-    } else {
+    } else if (targetRole === "viewer") {
       toast.success("เข้าสู่ระบบในฐานะ: ผู้ใช้งาน (Viewer) — มีสิทธิ์ก๊อปปี้ข้อความได้อย่างเดียว");
+    } else {
+      toast.info("จำลองเข้าสู่ระบบ: ผู้ใช้ใหม่รอการอนุมัติสิทธิ์ (ถูกล็อกไม่ให้เข้าถึง)");
     }
     setOpen(false);
   };
