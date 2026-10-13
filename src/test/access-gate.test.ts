@@ -1,86 +1,150 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { authStore, calculateRole } from "@/lib/auth/auth-store";
-import type { User } from "@supabase/supabase-js";
+import { authStore, DEFAULT_MASTER_KEY } from "@/lib/auth/auth-store";
 
-describe("Access Gate & Permission Control", () => {
+describe("Owner-Controlled Access Key & Security System", () => {
   beforeEach(async () => {
     await authStore.signOut();
+    authStore.resetRateLimit();
+    authStore.resetMasterKeyForTesting();
   });
 
-  it("blocks unauthenticated users by default", () => {
+  it("strictly blocks unauthenticated access by default", () => {
     const state = authStore.getSnapshot();
-    expect(state.user).toBeNull();
-    expect(state.isApproved).toBe(false);
-    expect(state.accessStatus).toBe("unauthenticated");
+    expect(state.session).toBeNull();
+    expect(state.isAuthenticated).toBe(false);
+    expect(state.isOwner).toBe(false);
   });
 
-  it("identifies owner accounts and automatically approves them", () => {
-    authStore.loginAs("owner");
+  it("authenticates Master Owner Key with full privileges", async () => {
+    const res = await authStore.loginWithKey(DEFAULT_MASTER_KEY);
+    expect(res.ok).toBe(true);
+    expect(res.role).toBe("owner");
+
     const state = authStore.getSnapshot();
-    expect(state.user).not.toBeNull();
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.isOwner).toBe(true);
     expect(state.role).toBe("owner");
-    expect(state.isApproved).toBe(true);
-    expect(state.accessStatus).toBe("approved");
+    expect(authStore.canAccess("canAccessSettings")).toBe(true);
+    expect(authStore.canAccess("canEditFaq")).toBe(true);
+    expect(authStore.canAccess("canDeleteFaq")).toBe(true);
   });
 
-  it("blocks unapproved/new user until permission is granted", () => {
-    authStore.loginAs("unapproved");
+  it("authenticates staff member via valid pre-generated Passcode", async () => {
+    const res = await authStore.loginWithKey("CS-SUPPORT-2026");
+    expect(res.ok).toBe(true);
+    expect(res.role).toBe("viewer");
+
     const state = authStore.getSnapshot();
-    expect(state.user).not.toBeNull();
-    expect(state.isApproved).toBe(false);
-    expect(state.accessStatus).toBe("pending");
-    // Verify pending request was generated
-    expect(state.pendingRequests.some((r) => r.email === "guest.waitlist@gaming-team.com")).toBe(
-      true,
+    expect(state.isAuthenticated).toBe(true);
+    expect(state.isOwner).toBe(false);
+    expect(authStore.canAccess("canSearch")).toBe(true);
+    expect(authStore.canAccess("canCopy")).toBe(true);
+    // Viewer cannot edit or delete FAQ or access settings
+    expect(authStore.canAccess("canEditFaq")).toBe(false);
+    expect(authStore.canAccess("canDeleteFaq")).toBe(false);
+    expect(authStore.canAccess("canAccessSettings")).toBe(false);
+  });
+
+  it("enforces brute-force lockout after 5 consecutive failed attempts", async () => {
+    for (let i = 1; i <= 4; i++) {
+      const res = await authStore.loginWithKey(`INVALID_KEY_${i}`);
+      expect(res.ok).toBe(false);
+      expect(authStore.getSnapshot().rateLimit.failedAttempts).toBe(i);
+    }
+
+    // 5th attempt triggers lockout
+    const fifthRes = await authStore.loginWithKey("INVALID_KEY_5");
+    expect(fifthRes.ok).toBe(false);
+    expect(fifthRes.error).toContain("ระงับชั่วคราว");
+    expect(authStore.getSnapshot().rateLimit.lockoutUntil).toBeGreaterThan(Date.now());
+
+    // Subsequent attempt is rejected immediately due to lockout
+    const lockedRes = await authStore.loginWithKey(DEFAULT_MASTER_KEY);
+    expect(lockedRes.ok).toBe(false);
+    expect(lockedRes.error).toContain("ระงับชั่วคราว");
+  });
+
+  it("blocks user login when Passcode is blocked or revoked by Owner", async () => {
+    // 1. Login as Master Owner first to manage keys
+    await authStore.loginWithKey(DEFAULT_MASTER_KEY);
+
+    // 2. Block staff key
+    const toggleRes = authStore.toggleKeyStatus("key-staff-viewer");
+    expect(toggleRes.ok).toBe(true);
+    expect(toggleRes.newStatus).toBe("blocked");
+
+    await authStore.signOut();
+
+    // 3. Attempt to login with blocked key
+    const res = await authStore.loginWithKey("CS-SUPPORT-2026");
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("ระงับการใช้งาน");
+  });
+
+  it("allows Owner to create, configure features, and update Passcodes", async () => {
+    await authStore.loginWithKey(DEFAULT_MASTER_KEY);
+
+    const created = authStore.createAccessKey({
+      key: "CS-NIGHTSHIFT-99",
+      name: "ทีม CS กะดึก",
+      role: "editor",
+      permissions: {
+        canSearch: true,
+        canCopy: true,
+        canEditFaq: true,
+        canDeleteFaq: true,
+      },
+      notes: "ทีมพิเศษ",
+    });
+
+    expect(created.ok).toBe(true);
+    expect(created.key?.key).toBe("CS-NIGHTSHIFT-99");
+
+    await authStore.signOut();
+
+    // Staff can now login with this new Passcode
+    const loginRes = await authStore.loginWithKey("CS-NIGHTSHIFT-99");
+    expect(loginRes.ok).toBe(true);
+    expect(loginRes.name).toBe("ทีม CS กะดึก");
+    expect(authStore.canAccess("canDeleteFaq")).toBe(true);
+  });
+
+  it("handles Change Master Key flow securely and invalidates active sessions", async () => {
+    await authStore.loginWithKey(DEFAULT_MASTER_KEY);
+    expect(authStore.getSnapshot().isAuthenticated).toBe(true);
+
+    // Rejects weak or mismatched keys
+    const weakRes = await authStore.changeMasterKey(DEFAULT_MASTER_KEY, "short", "short");
+    expect(weakRes.ok).toBe(false);
+    expect(weakRes.error).toContain("อย่างน้อย 8 ตัวอักษร");
+
+    // Rejects wrong current key
+    const wrongCurRes = await authStore.changeMasterKey(
+      "WRONG_KEY",
+      "NewMasterKey2026!",
+      "NewMasterKey2026!",
     );
-  });
+    expect(wrongCurRes.ok).toBe(false);
+    expect(wrongCurRes.error).toContain("ปัจจุบันไม่ถูกต้อง");
 
-  it("allows owner to approve a pending user", () => {
-    authStore.loginAs("unapproved");
-    const userEmail = "guest.waitlist@gaming-team.com";
-    expect(authStore.getSnapshot().isApproved).toBe(false);
-
-    // Owner approves user as viewer
-    authStore.approveUser(userEmail, "viewer", "Approved CS member");
-
-    const approvedState = authStore.getSnapshot();
-    expect(approvedState.isApproved).toBe(true);
-    expect(approvedState.accessStatus).toBe("approved");
-    expect(approvedState.role).toBe("viewer");
-  });
-
-  it("allows owner to pre-approve user email before they log in", () => {
-    const newMemberEmail = "new.agent.nightshift@gaming-team.com";
-    authStore.approveUser(newMemberEmail, "viewer", "Pre-approved by Admin");
-
-    // Check whitelist contains user
-    expect(authStore.getSnapshot().approvedUsers.some((u) => u.email === newMemberEmail)).toBe(
-      true,
+    // Successfully changes Master Key
+    const successRes = await authStore.changeMasterKey(
+      DEFAULT_MASTER_KEY,
+      "NewSecureMasterKey2026!",
+      "NewSecureMasterKey2026!",
     );
+    expect(successRes.ok).toBe(true);
 
-    // Now user logs in with that email
-    const mockUser: User = {
-      id: "usr-nightshift-1",
-      email: newMemberEmail,
-      app_metadata: {},
-      user_metadata: {},
-      aud: "authenticated",
-      created_at: new Date().toISOString(),
-    };
-    authStore.applyLoggedInUser(mockUser, null);
+    // Active session must be invalidated immediately
+    expect(authStore.getSnapshot().isAuthenticated).toBe(false);
 
-    const state = authStore.getSnapshot();
-    expect(state.isApproved).toBe(true);
-    expect(state.accessStatus).toBe("approved");
-  });
+    // Old key fails
+    const oldLogin = await authStore.loginWithKey(DEFAULT_MASTER_KEY);
+    expect(oldLogin.ok).toBe(false);
 
-  it("handles rejection and revoking of access", () => {
-    authStore.loginAs("unapproved");
-    const userEmail = "guest.waitlist@gaming-team.com";
-
-    authStore.rejectUser(userEmail);
-    const state = authStore.getSnapshot();
-    expect(state.isApproved).toBe(false);
-    expect(state.accessStatus).toBe("rejected");
+    // New key succeeds
+    const newLogin = await authStore.loginWithKey("NewSecureMasterKey2026!");
+    expect(newLogin.ok).toBe(true);
+    expect(newLogin.role).toBe("owner");
   });
 });

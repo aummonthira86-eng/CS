@@ -95,10 +95,10 @@ describe("Role-Based Access Control (RBAC) & Permissions", () => {
   it("handles instant role switching for Owner and Viewer", async () => {
     const { authStore } = await import("@/lib/auth/auth-store");
 
-    authStore.loginAs("owner");
+    await authStore.loginAs("owner");
     expect(authStore.getSnapshot().role).toBe("owner");
 
-    authStore.loginAs("viewer");
+    await authStore.loginAs("viewer");
     expect(authStore.getSnapshot().role).toBe("viewer");
 
     // Setting multiple owner emails

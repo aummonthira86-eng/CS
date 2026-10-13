@@ -1,125 +1,184 @@
 import { useSyncExternalStore } from "react";
-import type { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 import type { Role } from "@/lib/faq/types";
 
-const AUTH_STORAGE_KEY = "faq-mgmt:auth-session:v1";
-const OWNER_EMAIL_KEY = "faq-mgmt:owner-email:v1";
-const APPROVED_USERS_KEY = "faq-mgmt:approved-users:v1";
-const PENDING_REQUESTS_KEY = "faq-mgmt:pending-requests:v1";
-const GATE_ENABLED_KEY = "faq-mgmt:gate-enabled:v1";
+const MASTER_KEY_HASH_KEY = "faq-mgmt:master-key-hash:v2";
+const ACCESS_KEYS_KEY = "faq-mgmt:access-keys:v2";
+const AUTH_SESSION_KEY = "faq-mgmt:access-session:v2";
+const RATE_LIMIT_KEY = "faq-mgmt:rate-limit:v2";
 
-// Default owner email from project metadata or fallback
-export const DEFAULT_OWNER_EMAIL =
-  "peepoo3682@gmail.com, aumaoyaoao@gmail.com, aummonthira86@gmail.com, kunlanars@gmail.com";
+export const DEFAULT_MASTER_KEY = "CS-MASTER-2026";
+// Precomputed SHA-256 for "CS-MASTER-2026"
+export const DEFAULT_MASTER_KEY_HASH =
+  "f1d69d2d0b50aa22869df3158c89b2533e4b7b3e1f579951cb3298c485fc3fce";
 
-export interface ApprovedUser {
-  email: string;
-  role: Role;
-  approvedAt: string;
-  approvedBy: string;
-  name?: string;
-  note?: string;
+export interface FeaturePermissions {
+  canSearch: boolean;
+  canCopy: boolean;
+  canEditFaq: boolean;
+  canDeleteFaq: boolean;
+  canManageCategories: boolean;
+  canManageGallery: boolean;
+  canImportExport: boolean;
+  canEvaluate: boolean;
+  canAccessSettings: boolean;
 }
 
-export interface AccessRequest {
+export const OWNER_PERMISSIONS: FeaturePermissions = {
+  canSearch: true,
+  canCopy: true,
+  canEditFaq: true,
+  canDeleteFaq: true,
+  canManageCategories: true,
+  canManageGallery: true,
+  canImportExport: true,
+  canEvaluate: true,
+  canAccessSettings: true,
+};
+
+export const VIEWER_PERMISSIONS: FeaturePermissions = {
+  canSearch: true,
+  canCopy: true,
+  canEditFaq: false,
+  canDeleteFaq: false,
+  canManageCategories: false,
+  canManageGallery: false,
+  canImportExport: false,
+  canEvaluate: true,
+  canAccessSettings: false,
+};
+
+export const EDITOR_PERMISSIONS: FeaturePermissions = {
+  canSearch: true,
+  canCopy: true,
+  canEditFaq: true,
+  canDeleteFaq: false,
+  canManageCategories: true,
+  canManageGallery: true,
+  canImportExport: true,
+  canEvaluate: true,
+  canAccessSettings: false,
+};
+
+export interface AccessKeyItem {
   id: string;
-  email: string;
-  name?: string;
-  requestedAt: string;
-  note?: string;
-  status: "pending" | "approved" | "rejected";
+  key: string;
+  name: string;
+  role: Role;
+  status: "active" | "blocked" | "revoked";
+  permissions: FeaturePermissions;
+  createdAt: string;
+  lastUsedAt?: string;
+  notes?: string;
 }
 
-export type AccessStatus = "unauthenticated" | "pending" | "approved" | "rejected";
+export interface AuthSession {
+  token: string;
+  keyId: string;
+  keyCode: string;
+  name: string;
+  role: Role;
+  permissions: FeaturePermissions;
+  authenticatedAt: string;
+}
+
+export interface RateLimitState {
+  failedAttempts: number;
+  lockoutUntil: number; // timestamp in ms
+}
 
 export interface AuthState {
-  user: User | null;
-  session: Session | null;
+  session: AuthSession | null;
   role: Role;
-  ownerEmail: string;
+  isOwner: boolean;
+  isAuthenticated: boolean;
   loading: boolean;
   initialized: boolean;
-  gateEnabled: boolean;
+  accessKeys: AccessKeyItem[];
+  rateLimit: RateLimitState;
+  user: { id: string; email: string; role: Role } | null;
   isApproved: boolean;
-  accessStatus: AccessStatus;
-  approvedUsers: ApprovedUser[];
-  pendingRequests: AccessRequest[];
+  accessStatus: "approved" | "unauthenticated";
+  ownerEmail: string;
+  pendingRequests: unknown[];
+  pendingCount: number;
 }
 
-const DEFAULT_APPROVED_USERS: ApprovedUser[] = [
+export const DEFAULT_ACCESS_KEYS: AccessKeyItem[] = [
   {
-    email: "peepoo3682@gmail.com",
-    role: "owner",
-    approvedAt: "2026-01-01T00:00:00.000Z",
-    approvedBy: "System (Default Owner)",
-    name: "เจ้าของระบบหลัก",
-    note: "บัญชีผู้ดูแลระบบหลัก",
-  },
-  {
-    email: "aumaoyaoao@gmail.com",
-    role: "owner",
-    approvedAt: "2026-01-01T00:00:00.000Z",
-    approvedBy: "System (Default Owner)",
-    name: "Aum Owner",
-    note: "เจ้าของระบบ",
-  },
-  {
-    email: "aummonthira86@gmail.com",
-    role: "owner",
-    approvedAt: "2026-01-01T00:00:00.000Z",
-    approvedBy: "System (Default Owner)",
-    name: "Monthira Owner",
-    note: "เจ้าของระบบ",
-  },
-  {
-    email: "kunlanars@gmail.com",
-    role: "owner",
-    approvedAt: "2026-01-01T00:00:00.000Z",
-    approvedBy: "System (Default Owner)",
-    name: "Admin Owner",
-    note: "เจ้าของระบบหลัก",
-  },
-  {
-    email: "cs.agent@gaming-team.com",
+    id: "key-staff-viewer",
+    key: "CS-SUPPORT-2026",
+    name: "เจ้าหน้าที่ CS ประจำทีม (CS Agent)",
     role: "viewer",
-    approvedAt: "2026-01-01T00:00:00.000Z",
-    approvedBy: "System (Approved Agent)",
-    name: "เจ้าหน้าที่ CS ประจำทีม",
-    note: "บัญชีตัวอย่างเจ้าหน้าที่ CS ก๊อปปี้คำตอบได้",
+    status: "active",
+    permissions: VIEWER_PERMISSIONS,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    notes: "รหัสสำหรับเจ้าหน้าที่ CS ค้นหาและคัดลอกคำตอบ",
+  },
+  {
+    id: "key-team-editor",
+    key: "CS-EDITOR-2026",
+    name: "หัวหน้าทีม CS (Team Lead / Editor)",
+    role: "editor",
+    status: "active",
+    permissions: EDITOR_PERMISSIONS,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    notes: "รหัสสำหรับแก้ไข เพิ่ม FAQ จัดการหมวดหมู่ และคลังรูปภาพ",
   },
 ];
 
+export async function sha256(text: string): Promise<string> {
+  if (typeof crypto !== "undefined" && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(text);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  // Deterministic fallback for environments without crypto.subtle
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = (hash << 5) - hash + text.charCodeAt(i);
+    hash |= 0;
+  }
+  return "hash-" + Math.abs(hash).toString(16);
+}
+
 const SERVER_SNAPSHOT: AuthState = {
-  user: null,
   session: null,
   role: "viewer",
-  ownerEmail: DEFAULT_OWNER_EMAIL,
+  isOwner: false,
+  isAuthenticated: false,
   loading: false,
   initialized: false,
-  gateEnabled: true,
+  accessKeys: DEFAULT_ACCESS_KEYS,
+  rateLimit: { failedAttempts: 0, lockoutUntil: 0 },
+  user: null,
   isApproved: false,
   accessStatus: "unauthenticated",
-  approvedUsers: DEFAULT_APPROVED_USERS,
+  ownerEmail: "owner@system",
   pendingRequests: [],
+  pendingCount: 0,
 };
 
 let currentAuth: AuthState = { ...SERVER_SNAPSHOT };
+let inMemoryMasterKeyHash: string | null = null;
 const listeners = new Set<() => void>();
 
-function getStoredOwnerEmail(): string {
-  if (typeof window === "undefined") return DEFAULT_OWNER_EMAIL;
+function getStoredMasterKeyHash(): string {
+  if (inMemoryMasterKeyHash) return inMemoryMasterKeyHash;
+  if (typeof window === "undefined") return DEFAULT_MASTER_KEY_HASH;
   try {
-    return window.localStorage.getItem(OWNER_EMAIL_KEY) || DEFAULT_OWNER_EMAIL;
+    const stored = window.localStorage.getItem(MASTER_KEY_HASH_KEY);
+    return stored || DEFAULT_MASTER_KEY_HASH;
   } catch {
-    return DEFAULT_OWNER_EMAIL;
+    return DEFAULT_MASTER_KEY_HASH;
   }
 }
 
-function getStoredApprovedUsers(): ApprovedUser[] {
-  if (typeof window === "undefined") return DEFAULT_APPROVED_USERS;
+function getStoredAccessKeys(): AccessKeyItem[] {
+  if (typeof window === "undefined") return DEFAULT_ACCESS_KEYS;
   try {
-    const raw = window.localStorage.getItem(APPROVED_USERS_KEY);
+    const raw = window.localStorage.getItem(ACCESS_KEYS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -127,132 +186,69 @@ function getStoredApprovedUsers(): ApprovedUser[] {
   } catch {
     // ignore
   }
-  return DEFAULT_APPROVED_USERS;
+  return DEFAULT_ACCESS_KEYS;
 }
 
-function getStoredPendingRequests(): AccessRequest[] {
-  if (typeof window === "undefined") return [];
+function getStoredSession(): AuthSession | null {
+  if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(PENDING_REQUESTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    }
+    const raw = window.localStorage.getItem(AUTH_SESSION_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
   } catch {
-    // ignore
+    return null;
   }
-  return [];
 }
 
-function getStoredGateEnabled(): boolean {
-  if (typeof window === "undefined") return true;
+function getStoredRateLimit(): RateLimitState {
+  if (typeof window === "undefined") return { failedAttempts: 0, lockoutUntil: 0 };
   try {
-    const raw = window.localStorage.getItem(GATE_ENABLED_KEY);
-    if (raw !== null) return raw === "true";
+    const raw = window.localStorage.getItem(RATE_LIMIT_KEY);
+    if (!raw) return { failedAttempts: 0, lockoutUntil: 0 };
+    return JSON.parse(raw);
   } catch {
-    // ignore
+    return { failedAttempts: 0, lockoutUntil: 0 };
   }
-  return true;
-}
-
-export function calculateRole(
-  user: User | null,
-  ownerEmail: string,
-  approvedUsers: ApprovedUser[] = currentAuth.approvedUsers,
-): Role {
-  if (!user) return "viewer";
-  const userEmail = (user.email ?? "").toLowerCase().trim();
-  const ownerList = ownerEmail
-    .toLowerCase()
-    .split(/[,;\s]+/)
-    .map((e) => e.trim())
-    .filter(Boolean);
-
-  // If user email matches any owner email or metadata has role: "owner" or "admin"
-  if (
-    ownerList.includes(userEmail) ||
-    user.user_metadata?.role === "owner" ||
-    user.user_metadata?.role === "admin" ||
-    user.app_metadata?.role === "owner" ||
-    user.app_metadata?.role === "admin"
-  ) {
-    return "owner";
-  }
-
-  // Check if approved with owner role
-  const found = approvedUsers.find((u) => u.email.toLowerCase() === userEmail);
-  if (found && found.role === "owner") {
-    return "owner";
-  }
-
-  // All other users are Viewers with copy-only rights
-  return "viewer";
-}
-
-function computeAccessStatus(
-  user: User | null,
-  ownerEmail: string,
-  approvedUsers: ApprovedUser[],
-  pendingRequests: AccessRequest[],
-  gateEnabled: boolean,
-): { isApproved: boolean; accessStatus: AccessStatus } {
-  if (!gateEnabled) {
-    return { isApproved: true, accessStatus: "approved" };
-  }
-  if (!user) {
-    return { isApproved: false, accessStatus: "unauthenticated" };
-  }
-
-  const userEmail = (user.email ?? "").toLowerCase().trim();
-  const ownerList = ownerEmail
-    .toLowerCase()
-    .split(/[,;\s]+/)
-    .map((e) => e.trim())
-    .filter(Boolean);
-
-  // Owners are automatically approved
-  if (
-    ownerList.includes(userEmail) ||
-    user.user_metadata?.role === "owner" ||
-    user.user_metadata?.role === "admin" ||
-    user.app_metadata?.role === "owner" ||
-    user.app_metadata?.role === "admin"
-  ) {
-    return { isApproved: true, accessStatus: "approved" };
-  }
-
-  // Check approved users whitelist
-  const isApprovedInList = approvedUsers.some((u) => u.email.toLowerCase() === userEmail);
-  if (isApprovedInList || user.user_metadata?.approved === true) {
-    return { isApproved: true, accessStatus: "approved" };
-  }
-
-  // Check pending / rejected status
-  const existingReq = pendingRequests.find((r) => r.email.toLowerCase() === userEmail);
-  if (existingReq?.status === "rejected") {
-    return { isApproved: false, accessStatus: "rejected" };
-  }
-
-  return { isApproved: false, accessStatus: "pending" };
 }
 
 function persistState() {
   if (typeof window === "undefined") return;
   try {
-    if (currentAuth.user) {
-      window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(currentAuth.user));
+    if (currentAuth.session) {
+      window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(currentAuth.session));
     } else {
-      window.localStorage.removeItem(AUTH_STORAGE_KEY);
+      window.localStorage.removeItem(AUTH_SESSION_KEY);
     }
-    window.localStorage.setItem(APPROVED_USERS_KEY, JSON.stringify(currentAuth.approvedUsers));
-    window.localStorage.setItem(PENDING_REQUESTS_KEY, JSON.stringify(currentAuth.pendingRequests));
-    window.localStorage.setItem(GATE_ENABLED_KEY, String(currentAuth.gateEnabled));
+    window.localStorage.setItem(ACCESS_KEYS_KEY, JSON.stringify(currentAuth.accessKeys));
+    window.localStorage.setItem(RATE_LIMIT_KEY, JSON.stringify(currentAuth.rateLimit));
   } catch {
     // ignore
   }
 }
 
-function notify() {
+function updateState(patch: Partial<AuthState>) {
+  const nextSession = patch.session !== undefined ? patch.session : currentAuth.session;
+  const isAuthenticated = Boolean(nextSession);
+  const isOwner = nextSession ? nextSession.role === "owner" : false;
+  const role = nextSession ? nextSession.role : "viewer";
+
+  currentAuth = {
+    ...currentAuth,
+    ...patch,
+    session: nextSession,
+    isAuthenticated,
+    isOwner,
+    role,
+    user: nextSession
+      ? {
+          id: nextSession.keyId,
+          email: nextSession.name,
+          role: nextSession.role,
+        }
+      : null,
+    isApproved: isAuthenticated,
+    accessStatus: isAuthenticated ? "approved" : "unauthenticated",
+  };
   persistState();
   listeners.forEach((l) => l());
 }
@@ -272,612 +268,391 @@ export const authStore = {
   async init() {
     if (typeof window === "undefined" || currentAuth.initialized) return;
 
-    const ownerEmail = getStoredOwnerEmail();
-    const approvedUsers = getStoredApprovedUsers();
-    const pendingRequests = getStoredPendingRequests();
-    const gateEnabled = getStoredGateEnabled();
+    const accessKeys = getStoredAccessKeys();
+    const rateLimit = getStoredRateLimit();
+    const storedSession = getStoredSession();
 
-    currentAuth = {
-      ...currentAuth,
-      ownerEmail,
-      approvedUsers,
-      pendingRequests,
-      gateEnabled,
-      loading: true,
-    };
-    notify();
-
-    try {
-      // 1. Check active Supabase session
-      const { data } = await supabase.auth.getSession();
-      const session = data?.session ?? null;
-      let user = session?.user ?? null;
-
-      if (!user) {
-        // Check local persisted mock/guest session
-        try {
-          const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-          if (raw) user = JSON.parse(raw);
-        } catch {
-          // ignore
-        }
-      }
-
-      const role = calculateRole(user, ownerEmail, approvedUsers);
-      const { isApproved, accessStatus } = computeAccessStatus(
-        user,
-        ownerEmail,
-        approvedUsers,
-        pendingRequests,
-        gateEnabled,
-      );
-
-      // If user exists and not approved, ensure pending request is recorded
-      let updatedRequests = pendingRequests;
-      if (user && !isApproved && user.email) {
-        const clean = user.email.toLowerCase().trim();
-        if (!pendingRequests.some((r) => r.email.toLowerCase() === clean)) {
-          const newReq: AccessRequest = {
-            id: `req-${Date.now().toString(36)}`,
-            email: clean,
-            name: user.user_metadata?.full_name || user.email?.split("@")[0],
-            requestedAt: new Date().toISOString(),
-            status: "pending",
+    let validSession: AuthSession | null = null;
+    if (storedSession) {
+      if (storedSession.keyId === "master-owner") {
+        validSession = storedSession;
+      } else {
+        const found = accessKeys.find((k) => k.id === storedSession.keyId);
+        if (found && found.status === "active") {
+          validSession = {
+            ...storedSession,
+            name: found.name,
+            role: found.role,
+            permissions: found.permissions,
           };
-          updatedRequests = [newReq, ...pendingRequests];
+        } else {
+          try {
+            window.localStorage.removeItem(AUTH_SESSION_KEY);
+          } catch {
+            // ignore
+          }
         }
       }
+    }
 
-      currentAuth = {
-        user,
+    updateState({
+      session: validSession,
+      initialized: true,
+      loading: false,
+      accessKeys,
+      rateLimit,
+    });
+  },
+
+  /**
+   * Primary entry point: Authenticate with a Passcode / Access Key or Master Owner Key
+   */
+  async loginWithKey(
+    keyInput: string,
+  ): Promise<{ ok: boolean; role?: Role; name?: string; error?: string }> {
+    const clean = keyInput.trim();
+    if (!clean) {
+      return { ok: false, error: "กรุณาระบุรหัสผ่านเข้าใช้งาน (Access Key / Passcode)" };
+    }
+
+    const now = Date.now();
+    if (currentAuth.rateLimit.lockoutUntil > now) {
+      const waitSeconds = Math.ceil((currentAuth.rateLimit.lockoutUntil - now) / 1000);
+      return {
+        ok: false,
+        error: `ระบบถูกระงับชั่วคราวเนื่องจากใส่รหัสผิดเกินกำหนด กรุณารออีก ${waitSeconds} วินาที`,
+      };
+    }
+
+    updateState({ loading: true });
+
+    // 1. Check if input matches Master Owner Key
+    const masterHash = getStoredMasterKeyHash();
+    const inputHash = await sha256(clean);
+
+    const isMasterMatch =
+      masterHash !== DEFAULT_MASTER_KEY_HASH
+        ? inputHash === masterHash
+        : clean === DEFAULT_MASTER_KEY || inputHash === DEFAULT_MASTER_KEY_HASH;
+
+    if (isMasterMatch) {
+      const session: AuthSession = {
+        token: `tok-master-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        keyId: "master-owner",
+        keyCode: "••••••••",
+        name: "เจ้าของระบบหลัก (Master Owner)",
+        role: "owner",
+        permissions: OWNER_PERMISSIONS,
+        authenticatedAt: new Date().toISOString(),
+      };
+
+      updateState({
         session,
-        role,
-        ownerEmail,
-        approvedUsers,
-        pendingRequests: updatedRequests,
-        gateEnabled,
-        isApproved,
-        accessStatus,
         loading: false,
-        initialized: true,
-      };
-      notify();
-
-      // 2. Listen to live Supabase auth state changes
-      supabase.auth.onAuthStateChange((_event, newSession) => {
-        const nextUser = newSession?.user ?? null;
-        const nextRole = calculateRole(nextUser, currentAuth.ownerEmail, currentAuth.approvedUsers);
-        const { isApproved: nextApproved, accessStatus: nextStatus } = computeAccessStatus(
-          nextUser,
-          currentAuth.ownerEmail,
-          currentAuth.approvedUsers,
-          currentAuth.pendingRequests,
-          currentAuth.gateEnabled,
-        );
-
-        currentAuth = {
-          ...currentAuth,
-          user: nextUser,
-          session: newSession,
-          role: nextRole,
-          isApproved: nextApproved,
-          accessStatus: nextStatus,
-          loading: false,
-        };
-        notify();
+        rateLimit: { failedAttempts: 0, lockoutUntil: 0 },
       });
-    } catch (err) {
-      console.warn("[Auth] Failed to initialize Supabase session", err);
-      currentAuth = {
-        ...currentAuth,
-        loading: false,
-        initialized: true,
-      };
-      notify();
-    }
-  },
-
-  async signInWithEmail(
-    email: string,
-    password: string,
-  ): Promise<{ ok: boolean; error?: string; isApproved?: boolean }> {
-    currentAuth = { ...currentAuth, loading: true };
-    notify();
-
-    try {
-      const cleanEmail = email.trim();
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
-
-      if (error) {
-        let msg = error.message;
-        if (msg.includes("Invalid login credentials")) {
-          msg = "อีเมลหรือรหัสผ่านไม่ถูกต้อง หรือยังไม่ได้สมัครสมาชิก";
-        } else if (msg.includes("Email not confirmed")) {
-          msg = "กรุณากดยืนยันอีเมลในกล่องจดหมายของคุณก่อนเข้าสู่ระบบ";
-        } else if (msg.includes("Invalid API key")) {
-          // If Supabase key or project mismatch, allow instant local login as fallback so app never gets stuck
-          const isOwner = currentAuth.ownerEmail
-            .toLowerCase()
-            .split(/[,;\s]+/)
-            .map((e) => e.trim())
-            .includes(cleanEmail.toLowerCase());
-
-          const mockUser: User = {
-            id: `usr-${Date.now().toString(36)}`,
-            email: cleanEmail,
-            app_metadata: {},
-            user_metadata: { role: isOwner ? "owner" : "viewer" },
-            aud: "authenticated",
-            created_at: new Date().toISOString(),
-          };
-
-          return this.applyLoggedInUser(mockUser, null);
-        }
-        currentAuth = { ...currentAuth, loading: false };
-        notify();
-        return { ok: false, error: msg };
-      }
-
-      return this.applyLoggedInUser(data.user, data.session);
-    } catch (err) {
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "เกิดข้อผิดพลาดในการเชื่อมต่อ",
-      };
-    }
-  },
-
-  async signUpWithEmail(
-    email: string,
-    password: string,
-    name?: string,
-  ): Promise<{ ok: boolean; message?: string; error?: string; isApproved?: boolean }> {
-    currentAuth = { ...currentAuth, loading: true };
-    notify();
-
-    try {
-      const cleanEmail = email.trim();
-      const isOwner = currentAuth.ownerEmail
-        .toLowerCase()
-        .split(/[,;\s]+/)
-        .map((e) => e.trim())
-        .includes(cleanEmail.toLowerCase());
-
-      const { data, error } = await supabase.auth.signUp({
-        email: cleanEmail,
-        password,
-        options: {
-          data: {
-            role: isOwner ? "owner" : "viewer",
-            full_name: name || cleanEmail.split("@")[0],
-          },
-        },
-      });
-
-      if (error) {
-        let msg = error.message;
-        if (msg.includes("User already registered")) {
-          msg = "อีเมลนี้ลงทะเบียนไว้แล้ว กรุณาเข้าสู่ระบบด้วยรหัสผ่าน";
-        } else if (msg.includes("Password should be")) {
-          msg = "รหัสผ่านต้องมีความยาวอย่างน้อย 6 ตัวอักษร";
-        } else if (msg.includes("Invalid API key")) {
-          // Local fallback
-          const mockUser: User = {
-            id: `usr-${Date.now().toString(36)}`,
-            email: cleanEmail,
-            app_metadata: {},
-            user_metadata: {
-              role: isOwner ? "owner" : "viewer",
-              full_name: name || cleanEmail.split("@")[0],
-            },
-            aud: "authenticated",
-            created_at: new Date().toISOString(),
-          };
-          const res = this.applyLoggedInUser(mockUser, null);
-          return {
-            ok: true,
-            isApproved: res.isApproved,
-            message: res.isApproved
-              ? "เข้าสู่ระบบเรียบร้อยแล้ว!"
-              : "ลงทะเบียนเรียบร้อยแล้ว! ส่งคำขออนุมัติไปยังผู้ดูแลระบบเรียบร้อย",
-          };
-        }
-        currentAuth = { ...currentAuth, loading: false };
-        notify();
-        return { ok: false, error: msg };
-      }
-
-      if (data.user && !data.session) {
-        currentAuth = { ...currentAuth, loading: false };
-        notify();
-        return {
-          ok: true,
-          message: `ลงทะเบียนเรียบร้อย! ระบบส่งอีเมลยืนยันไปยัง ${cleanEmail} แล้ว กรุณากดยืนยันในกล่องจดหมาย`,
-        };
-      }
-
-      if (data.user) {
-        const res = this.applyLoggedInUser(data.user, data.session);
-        return {
-          ok: true,
-          isApproved: res.isApproved,
-          message: res.isApproved
-            ? "ลงทะเบียนและเข้าสู่ระบบเรียบร้อย!"
-            : "ลงทะเบียนสำเร็จ! คำขอสิทธิ์ของคุณกำลังรอการอนุมัติจากผู้ดูแลระบบ",
-        };
-      }
-
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      return { ok: true };
-    } catch (err) {
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "ไม่สามารถลงทะเบียนได้",
-      };
-    }
-  },
-
-  applyLoggedInUser(
-    user: User | null,
-    session: Session | null,
-  ): { ok: boolean; isApproved: boolean } {
-    if (!user) {
-      currentAuth = {
-        ...currentAuth,
-        user: null,
-        session: null,
-        role: "viewer",
-        isApproved: false,
-        accessStatus: "unauthenticated",
-        loading: false,
-      };
-      notify();
-      return { ok: false, isApproved: false };
+      return { ok: true, role: "owner", name: session.name };
     }
 
-    const role = calculateRole(user, currentAuth.ownerEmail, currentAuth.approvedUsers);
-    const { isApproved, accessStatus } = computeAccessStatus(
-      user,
-      currentAuth.ownerEmail,
-      currentAuth.approvedUsers,
-      currentAuth.pendingRequests,
-      currentAuth.gateEnabled,
+    // 2. Check against active Staff Access Keys
+    const matchingKey = currentAuth.accessKeys.find(
+      (k) => k.key.toUpperCase() === clean.toUpperCase(),
     );
 
-    // Auto-create pending request if user is not approved
-    let pending = currentAuth.pendingRequests;
-    if (!isApproved && user.email) {
-      const clean = user.email.toLowerCase().trim();
-      const existing = pending.find((r) => r.email.toLowerCase() === clean);
-      if (!existing) {
-        const newReq: AccessRequest = {
-          id: `req-${Date.now().toString(36)}`,
-          email: clean,
-          name: user.user_metadata?.full_name || clean.split("@")[0],
-          requestedAt: new Date().toISOString(),
-          status: "pending",
+    if (matchingKey) {
+      if (matchingKey.status === "blocked") {
+        updateState({ loading: false });
+        return {
+          ok: false,
+          error: "รหัสผ่านนี้ถูกระงับการใช้งานชั่วคราว กรุณาติดต่อผู้ดูแลระบบ (Owner)",
         };
-        pending = [newReq, ...pending];
       }
-    }
+      if (matchingKey.status === "revoked") {
+        updateState({ loading: false });
+        return {
+          ok: false,
+          error: "รหัสผ่านนี้ถูกเพิกถอนสิทธิ์แล้ว กรุณาติดต่อผู้ดูแลระบบ",
+        };
+      }
 
-    currentAuth = {
-      ...currentAuth,
-      user,
-      session,
-      role,
-      isApproved,
-      accessStatus,
-      pendingRequests: pending,
-      loading: false,
-    };
-    notify();
-    return { ok: true, isApproved };
-  },
-
-  async signInWithOtp(email: string): Promise<{ ok: boolean; error?: string }> {
-    currentAuth = { ...currentAuth, loading: true };
-    notify();
-
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-      });
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      if (error) return { ok: false, error: error.message };
-      return { ok: true };
-    } catch (err) {
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "ไม่สามารถส่ง Magic Link ได้",
-      };
-    }
-  },
-
-  async resetPasswordForEmail(email: string): Promise<{ ok: boolean; error?: string }> {
-    currentAuth = { ...currentAuth, loading: true };
-    notify();
-
-    try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      if (error) return { ok: false, error: error.message };
-      return { ok: true };
-    } catch (err) {
-      currentAuth = { ...currentAuth, loading: false };
-      notify();
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "ไม่สามารถส่งคำขอรีเซ็ตรหัสผ่านได้",
-      };
-    }
-  },
-
-  async signOut() {
-    try {
-      await supabase.auth.signOut();
-    } catch {
-      // ignore
-    }
-    currentAuth = {
-      ...currentAuth,
-      user: null,
-      session: null,
-      role: "viewer",
-      isApproved: false,
-      accessStatus: "unauthenticated",
-      loading: false,
-    };
-    notify();
-  },
-
-  // 1-Click test login for instant evaluation
-  loginAs(targetRole: "owner" | "viewer" | "unapproved") {
-    let email = "cs.agent@gaming-team.com";
-    let role: Role = "viewer";
-    if (targetRole === "owner") {
-      email = "peepoo3682@gmail.com";
-      role = "owner";
-    } else if (targetRole === "unapproved") {
-      email = "guest.waitlist@gaming-team.com";
-      role = "viewer";
-    }
-
-    const mockUser: User = {
-      id: `usr-quick-${targetRole}`,
-      email,
-      app_metadata: {},
-      user_metadata: {
-        role,
-        full_name:
-          targetRole === "owner"
-            ? "เจ้าของระบบ (Admin Owner)"
-            : targetRole === "unapproved"
-              ? "ผู้ใช้ใหม่ (รออนุมัติสิทธิ์)"
-              : "เจ้าหน้าที่ CS (ได้รับอนุญาตแล้ว)",
-      },
-      aud: "authenticated",
-      created_at: new Date().toISOString(),
-    };
-
-    this.applyLoggedInUser(mockUser, null);
-  },
-
-  // User submits or updates access request note
-  requestAccess(email: string, note?: string, name?: string) {
-    const clean = email.toLowerCase().trim();
-    if (!clean) return;
-
-    const existing = currentAuth.pendingRequests.find((r) => r.email.toLowerCase() === clean);
-    let updated: AccessRequest[];
-
-    if (existing) {
-      updated = currentAuth.pendingRequests.map((r) =>
-        r.email.toLowerCase() === clean
-          ? {
-              ...r,
-              note: note ?? r.note,
-              name: name ?? r.name,
-              requestedAt: new Date().toISOString(),
-              status: "pending" as const,
-            }
-          : r,
+      const updatedKeys = currentAuth.accessKeys.map((k) =>
+        k.id === matchingKey.id ? { ...k, lastUsedAt: new Date().toISOString() } : k,
       );
-    } else {
-      const newReq: AccessRequest = {
-        id: `req-${Date.now().toString(36)}`,
-        email: clean,
-        name: name || clean.split("@")[0],
-        note,
-        requestedAt: new Date().toISOString(),
-        status: "pending",
+
+      const session: AuthSession = {
+        token: `tok-staff-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        keyId: matchingKey.id,
+        keyCode: matchingKey.key,
+        name: matchingKey.name,
+        role: matchingKey.role,
+        permissions: matchingKey.permissions,
+        authenticatedAt: new Date().toISOString(),
       };
-      updated = [newReq, ...currentAuth.pendingRequests];
+
+      updateState({
+        session,
+        loading: false,
+        accessKeys: updatedKeys,
+        rateLimit: { failedAttempts: 0, lockoutUntil: 0 },
+      });
+      return { ok: true, role: matchingKey.role, name: matchingKey.name };
     }
 
-    currentAuth = {
-      ...currentAuth,
-      pendingRequests: updated,
-      accessStatus:
-        currentAuth.user?.email?.toLowerCase().trim() === clean
-          ? "pending"
-          : currentAuth.accessStatus,
-    };
-    notify();
-  },
+    // 3. Failed attempt -> increment rate limit counter
+    const nextFailed = currentAuth.rateLimit.failedAttempts + 1;
+    let nextLockout = 0;
+    let errorMsg = `รหัสเข้าใช้งานไม่ถูกต้อง (ใส่ผิดครั้งที่ ${nextFailed}/5)`;
 
-  // Owner approves user
-  approveUser(
-    email: string,
-    role: Role = "viewer",
-    note?: string,
-    approvedBy = "เจ้าของระบบ (Owner)",
-  ) {
-    const clean = email.toLowerCase().trim();
-    if (!clean) return;
-
-    // 1. Add / update in approvedUsers
-    const existingIndex = currentAuth.approvedUsers.findIndex(
-      (u) => u.email.toLowerCase() === clean,
-    );
-    let newApprovedList = [...currentAuth.approvedUsers];
-
-    const approvedItem: ApprovedUser = {
-      email: clean,
-      role,
-      approvedAt: new Date().toISOString(),
-      approvedBy,
-      note,
-    };
-
-    if (existingIndex >= 0) {
-      newApprovedList[existingIndex] = approvedItem;
-    } else {
-      newApprovedList = [approvedItem, ...newApprovedList];
+    if (nextFailed >= 5) {
+      nextLockout = Date.now() + 180 * 1000; // 3 minutes lockout
+      errorMsg = "ใส่รหัสผิดเกิน 5 ครั้ง ระบบถูกระงับชั่วคราว 3 นาที เพื่อความปลอดภัย";
     }
 
-    // 2. Update pending request status to "approved"
-    const newRequests = currentAuth.pendingRequests.map((r) =>
-      r.email.toLowerCase() === clean ? { ...r, status: "approved" as const } : r,
-    );
+    updateState({
+      loading: false,
+      rateLimit: {
+        failedAttempts: nextFailed,
+        lockoutUntil: nextLockout,
+      },
+    });
 
-    // 3. If currently logged in user matches, update their status live!
-    const isCurrentUser = currentAuth.user?.email?.toLowerCase().trim() === clean;
-    const nextRole = isCurrentUser
-      ? calculateRole(currentAuth.user, currentAuth.ownerEmail, newApprovedList)
-      : currentAuth.role;
-
-    currentAuth = {
-      ...currentAuth,
-      approvedUsers: newApprovedList,
-      pendingRequests: newRequests,
-      role: nextRole,
-      isApproved: isCurrentUser ? true : currentAuth.isApproved,
-      accessStatus: isCurrentUser ? "approved" : currentAuth.accessStatus,
-    };
-    notify();
+    return { ok: false, error: errorMsg };
   },
 
-  // Owner rejects request
-  rejectUser(email: string) {
-    const clean = email.toLowerCase().trim();
-    if (!clean) return;
-
-    const newApprovedList = currentAuth.approvedUsers.filter(
-      (u) => u.email.toLowerCase() !== clean,
-    );
-    const newRequests = currentAuth.pendingRequests.map((r) =>
-      r.email.toLowerCase() === clean ? { ...r, status: "rejected" as const } : r,
-    );
-
-    const isCurrentUser = currentAuth.user?.email?.toLowerCase().trim() === clean;
-
-    currentAuth = {
-      ...currentAuth,
-      approvedUsers: newApprovedList,
-      pendingRequests: newRequests,
-      isApproved: isCurrentUser ? false : currentAuth.isApproved,
-      accessStatus: isCurrentUser ? "rejected" : currentAuth.accessStatus,
-    };
-    notify();
-  },
-
-  // Owner removes user from whitelist
-  removeApprovedUser(email: string) {
-    const clean = email.toLowerCase().trim();
-    if (!clean) return;
-
-    const newApprovedList = currentAuth.approvedUsers.filter(
-      (u) => u.email.toLowerCase() !== clean,
-    );
-
-    const isCurrentUser = currentAuth.user?.email?.toLowerCase().trim() === clean;
-    const { isApproved, accessStatus } = computeAccessStatus(
-      currentAuth.user,
-      currentAuth.ownerEmail,
-      newApprovedList,
-      currentAuth.pendingRequests,
-      currentAuth.gateEnabled,
-    );
-
-    currentAuth = {
-      ...currentAuth,
-      approvedUsers: newApprovedList,
-      isApproved: isCurrentUser ? isApproved : currentAuth.isApproved,
-      accessStatus: isCurrentUser ? accessStatus : currentAuth.accessStatus,
-    };
-    notify();
-  },
-
-  setGateEnabled(enabled: boolean) {
-    currentAuth = {
-      ...currentAuth,
-      gateEnabled: enabled,
-      ...computeAccessStatus(
-        currentAuth.user,
-        currentAuth.ownerEmail,
-        currentAuth.approvedUsers,
-        currentAuth.pendingRequests,
-        enabled,
-      ),
-    };
-    notify();
+  /**
+   * Helper for tests or quick login
+   */
+  async loginAs(role: "owner" | "viewer") {
+    if (role === "owner") {
+      return this.loginWithKey(DEFAULT_MASTER_KEY);
+    }
+    return this.loginWithKey("CS-SUPPORT-2026");
   },
 
   setOwnerEmail(email: string) {
-    const trimmed = email.trim().toLowerCase();
-    if (!trimmed) return;
-    try {
-      window.localStorage.setItem(OWNER_EMAIL_KEY, trimmed);
-    } catch {
-      // ignore
-    }
-    const role = calculateRole(currentAuth.user, trimmed, currentAuth.approvedUsers);
-    const { isApproved, accessStatus } = computeAccessStatus(
-      currentAuth.user,
-      trimmed,
-      currentAuth.approvedUsers,
-      currentAuth.pendingRequests,
-      currentAuth.gateEnabled,
-    );
-
-    currentAuth = {
-      ...currentAuth,
-      ownerEmail: trimmed,
-      role,
-      isApproved,
-      accessStatus,
-    };
-    notify();
+    updateState({ ownerEmail: email });
   },
 
-  refreshStatus() {
-    if (!currentAuth.user) return;
-    const { isApproved, accessStatus } = computeAccessStatus(
-      currentAuth.user,
-      currentAuth.ownerEmail,
-      currentAuth.approvedUsers,
-      currentAuth.pendingRequests,
-      currentAuth.gateEnabled,
-    );
-    currentAuth = {
-      ...currentAuth,
-      isApproved,
-      accessStatus,
+  /**
+   * Sign out / Lock application
+   */
+  async signOut() {
+    updateState({
+      session: null,
+      loading: false,
+    });
+  },
+
+  /**
+   * Owner Master Key Management: Change Master Key
+   */
+  async changeMasterKey(
+    currentKey: string,
+    newKey: string,
+    confirmKey: string,
+  ): Promise<{ ok: boolean; error?: string }> {
+    const cur = currentKey.trim();
+    const next = newKey.trim();
+    const conf = confirmKey.trim();
+
+    if (!cur) return { ok: false, error: "กรุณาระบุ Master Key ปัจจุบัน" };
+    if (!next) return { ok: false, error: "กรุณาระบุ Master Key ใหม่" };
+
+    const currentStoredHash = getStoredMasterKeyHash();
+    const curHash = await sha256(cur);
+
+    const isCurValid =
+      currentStoredHash !== DEFAULT_MASTER_KEY_HASH
+        ? curHash === currentStoredHash
+        : cur === DEFAULT_MASTER_KEY || curHash === DEFAULT_MASTER_KEY_HASH;
+
+    if (!isCurValid) {
+      return { ok: false, error: "Master Key ปัจจุบันไม่ถูกต้อง" };
+    }
+
+    if (next !== conf) {
+      return { ok: false, error: "Master Key ใหม่และการยืนยันไม่ตรงกัน" };
+    }
+
+    if (next.length < 8) {
+      return { ok: false, error: "Master Key ใหม่ต้องมีความยาวอย่างน้อย 8 ตัวอักษร" };
+    }
+    const hasLetter = /[a-zA-Z]/.test(next);
+    const hasDigitOrSpecial = /[\d!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(next);
+    if (!hasLetter || !hasDigitOrSpecial) {
+      return {
+        ok: false,
+        error: "Master Key ต้องประกอบด้วยตัวอักษรและตัวเลขหรือสัญลักษณ์พิเศษ",
+      };
+    }
+
+    if (next === cur) {
+      return { ok: false, error: "Master Key ใหม่ต้องไม่ซ้ำกับรหัสปัจจุบัน" };
+    }
+
+    const newHash = await sha256(next);
+    inMemoryMasterKeyHash = newHash;
+
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.setItem(MASTER_KEY_HASH_KEY, newHash);
+      } catch {
+        return { ok: false, error: "ไม่สามารถบันทึก Master Key ได้" };
+      }
+    }
+
+    // Invalidate sessions immediately to force re-authentication
+    await this.signOut();
+
+    return { ok: true };
+  },
+
+  /**
+   * Owner Panel: Create New Access Passcode
+   */
+  createAccessKey(data: {
+    key?: string;
+    name: string;
+    role: Role;
+    permissions?: Partial<FeaturePermissions>;
+    notes?: string;
+  }): { ok: boolean; key?: AccessKeyItem; error?: string } {
+    if (!currentAuth.isOwner) {
+      return { ok: false, error: "เฉพาะเจ้าของระบบ (Owner) เท่านั้นที่สามารถสร้างรหัสผ่านได้" };
+    }
+
+    const name = data.name.trim();
+    if (!name) return { ok: false, error: "กรุณาระบุชื่อผู้ถือรหัสหรือทีมงาน" };
+
+    const generatedKey = (
+      data.key?.trim() ||
+      `CS-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`
+    ).toUpperCase();
+
+    if (
+      currentAuth.accessKeys.some((k) => k.key.toUpperCase() === generatedKey) ||
+      generatedKey === DEFAULT_MASTER_KEY
+    ) {
+      return { ok: false, error: "รหัสผ่านนี้มีอยู่ในระบบแล้ว กรุณาเลือกรหัสอื่น" };
+    }
+
+    const defaultPerms =
+      data.role === "admin"
+        ? OWNER_PERMISSIONS
+        : data.role === "editor"
+          ? EDITOR_PERMISSIONS
+          : VIEWER_PERMISSIONS;
+
+    const newKeyItem: AccessKeyItem = {
+      id: `key-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      key: generatedKey,
+      name,
+      role: data.role,
+      status: "active",
+      permissions: { ...defaultPerms, ...data.permissions },
+      createdAt: new Date().toISOString(),
+      notes: data.notes?.trim(),
     };
-    notify();
+
+    const nextKeys = [newKeyItem, ...currentAuth.accessKeys];
+    updateState({ accessKeys: nextKeys });
+
+    return { ok: true, key: newKeyItem };
+  },
+
+  /**
+   * Owner Panel: Update Access Key
+   */
+  updateAccessKey(
+    id: string,
+    patch: Partial<Omit<AccessKeyItem, "id" | "createdAt">>,
+  ): { ok: boolean; error?: string } {
+    if (!currentAuth.isOwner) {
+      return { ok: false, error: "เฉพาะเจ้าของระบบ (Owner) เท่านั้นที่มีสิทธิ์แก้ไข" };
+    }
+
+    const exists = currentAuth.accessKeys.find((k) => k.id === id);
+    if (!exists) return { ok: false, error: "ไม่พบรหัสผ่านที่ต้องการแก้ไข" };
+
+    const nextKeys = currentAuth.accessKeys.map((k) => (k.id === id ? { ...k, ...patch } : k));
+
+    let nextSession = currentAuth.session;
+    if (currentAuth.session?.keyId === id) {
+      if (patch.status === "blocked" || patch.status === "revoked") {
+        nextSession = null;
+      } else {
+        nextSession = {
+          ...currentAuth.session,
+          name: patch.name ?? currentAuth.session.name,
+          role: patch.role ?? currentAuth.session.role,
+          permissions: patch.permissions ?? currentAuth.session.permissions,
+        };
+      }
+    }
+
+    updateState({
+      accessKeys: nextKeys,
+      session: nextSession,
+    });
+
+    return { ok: true };
+  },
+
+  /**
+   * Owner Panel: Instantly Toggle Active / Blocked Status
+   */
+  toggleKeyStatus(id: string): { ok: boolean; newStatus?: string; error?: string } {
+    const item = currentAuth.accessKeys.find((k) => k.id === id);
+    if (!item) return { ok: false, error: "ไม่พบรหัสผ่าน" };
+
+    const nextStatus = item.status === "active" ? "blocked" : "active";
+    this.updateAccessKey(id, { status: nextStatus });
+    return { ok: true, newStatus: nextStatus };
+  },
+
+  /**
+   * Owner Panel: Revoke / Delete Access Key
+   */
+  revokeAccessKey(id: string): { ok: boolean; error?: string } {
+    if (!currentAuth.isOwner) {
+      return { ok: false, error: "เฉพาะเจ้าของระบบ (Owner) เท่านั้นที่มีสิทธิ์ลบรหัส" };
+    }
+
+    const nextKeys = currentAuth.accessKeys.filter((k) => k.id !== id);
+    let nextSession = currentAuth.session;
+    if (currentAuth.session?.keyId === id) {
+      nextSession = null;
+    }
+
+    updateState({
+      accessKeys: nextKeys,
+      session: nextSession,
+    });
+
+    return { ok: true };
+  },
+
+  resetRateLimit() {
+    updateState({
+      rateLimit: { failedAttempts: 0, lockoutUntil: 0 },
+    });
+  },
+
+  resetMasterKeyForTesting() {
+    inMemoryMasterKeyHash = null;
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(MASTER_KEY_HASH_KEY);
+      } catch {
+        // ignore
+      }
+    }
+  },
+
+  canAccess(permission: keyof FeaturePermissions): boolean {
+    if (currentAuth.isOwner) return true;
+    if (!currentAuth.session) return false;
+    return Boolean(currentAuth.session.permissions[permission]);
   },
 };
 
@@ -887,10 +662,10 @@ export function useAuth() {
     authStore.getSnapshot,
     authStore.getServerSnapshot,
   );
+
   return {
     ...state,
-    isOwner: state.role === "owner" || state.role === "admin",
-    isViewer: state.role === "viewer",
-    pendingCount: state.pendingRequests.filter((r) => r.status === "pending").length,
+    gateEnabled: true,
+    can: (permission: keyof FeaturePermissions) => authStore.canAccess(permission),
   };
 }

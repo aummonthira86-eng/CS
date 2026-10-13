@@ -14,13 +14,6 @@ import {
   Image as ImageIcon,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { ThemeCustomizerDialog } from "@/components/theme-customizer";
 import { AuthDialog } from "@/components/auth/auth-dialog";
 import { useAuth } from "@/lib/auth/auth-store";
@@ -47,31 +40,9 @@ function useActive() {
   return (to: string) => (to === "/" ? path === "/" : path.startsWith(to));
 }
 
-function RoleSwitch() {
-  const role = useRole();
-  return (
-    <div className="space-y-1.5">
-      <p className="text-xs opacity-70">บทบาทจำลอง (ทดสอบสิทธิ์)</p>
-      <Select value={role} onValueChange={(v) => store.setSetting("mock_role", v as Role)}>
-        <SelectTrigger className="h-9 border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
-            <SelectItem key={r} value={r}>
-              {ROLE_LABEL[r]}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </div>
-  );
-}
-
 function NavList({ onNavigate }: { onNavigate?: () => void }) {
   const isActive = useActive();
   const role = useRole();
-  const { isOwner, pendingCount } = useAuth();
 
   return (
     <nav className="space-y-1">
@@ -97,12 +68,8 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
               <Icon className="size-4 shrink-0" />
               <span>{label}</span>
             </div>
-            {to === "/settings" && isOwner && pendingCount > 0 ? (
-              <span className="rounded-full bg-rose-500 text-white px-1.5 py-0.5 text-[10px] font-bold animate-pulse">
-                {pendingCount}
-              </span>
-            ) : isRestricted ? (
-              <span className="text-[10px] opacity-60 font-normal">อ่านอย่างเดียว</span>
+            {isRestricted ? (
+              <span className="text-[10px] opacity-60 font-normal">จำกัดสิทธิ์</span>
             ) : null}
           </Link>
         );
@@ -113,7 +80,7 @@ function NavList({ onNavigate }: { onNavigate?: () => void }) {
 
 function Brand() {
   const { settings } = useData();
-  const { user, isOwner } = useAuth();
+  const { isOwner, session } = useAuth();
 
   return (
     <div className="flex items-center gap-2.5">
@@ -124,8 +91,8 @@ function Brand() {
         <p className="font-display text-base font-semibold text-sidebar-accent-foreground">
           {settings.site_name || "FAQ Management"}
         </p>
-        <p className="text-[11px] uppercase tracking-wider text-sidebar-primary">
-          {user ? (isOwner ? "👑 สิทธิ์: เจ้าของ" : "👤 สิทธิ์: ผู้ใช้งาน") : "ระบบคลัง FAQ"}
+        <p className="text-[11px] uppercase tracking-wider text-sidebar-primary font-medium">
+          {session ? (isOwner ? "👑 เจ้าของระบบ (Owner)" : `🔑 ${session.name}`) : "ระบบคลัง FAQ"}
         </p>
       </div>
     </div>
@@ -216,7 +183,6 @@ function MoreSheet() {
           <div className="pt-2">
             <ThemeCustomizerDialog />
           </div>
-          <RoleSwitch />
         </div>
       </SheetContent>
     </Sheet>
