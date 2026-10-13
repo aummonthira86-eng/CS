@@ -457,7 +457,7 @@ function PendingApprovalGate({ status }: { status: "pending" | "rejected" | stri
             </div>
             <p className="font-mono text-sm font-semibold text-foreground break-all">{userEmail}</p>
             {existingRequest?.requestedAt && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground" suppressHydrationWarning>
                 ส่งคำขอเมื่อ: {new Date(existingRequest.requestedAt).toLocaleString("th-TH")}
               </p>
             )}

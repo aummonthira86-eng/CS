@@ -17,6 +17,7 @@ const KEY = "faq-mgmt:test-data:v1";
 
 export const localStorageSource: DataSource = {
   load() {
+    if (typeof window === "undefined") return null;
     try {
       const raw = window.localStorage.getItem(KEY);
       if (!raw) return null;
@@ -28,10 +29,20 @@ export const localStorageSource: DataSource = {
     }
   },
   save(state) {
-    window.localStorage.setItem(KEY, JSON.stringify(state));
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(KEY, JSON.stringify(state));
+    } catch {
+      // ignore
+    }
   },
   clear() {
-    window.localStorage.removeItem(KEY);
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(KEY);
+    } catch {
+      // ignore
+    }
   },
 };
 

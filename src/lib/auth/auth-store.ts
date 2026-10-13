@@ -11,7 +11,7 @@ const GATE_ENABLED_KEY = "faq-mgmt:gate-enabled:v1";
 
 // Default owner email from project metadata or fallback
 export const DEFAULT_OWNER_EMAIL =
-  "peepoo3682@gmail.com, aumaoyaoao@gmail.com, aummonthira86@gmail.com";
+  "peepoo3682@gmail.com, aumaoyaoao@gmail.com, aummonthira86@gmail.com, kunlanars@gmail.com";
 
 export interface ApprovedUser {
   email: string;
@@ -71,6 +71,14 @@ const DEFAULT_APPROVED_USERS: ApprovedUser[] = [
     approvedBy: "System (Default Owner)",
     name: "Monthira Owner",
     note: "เจ้าของระบบ",
+  },
+  {
+    email: "kunlanars@gmail.com",
+    role: "owner",
+    approvedAt: "2026-01-01T00:00:00.000Z",
+    approvedBy: "System (Default Owner)",
+    name: "Admin Owner",
+    note: "เจ้าของระบบหลัก",
   },
   {
     email: "cs.agent@gaming-team.com",

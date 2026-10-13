@@ -59,9 +59,12 @@ export function FaqForm({ faq }: { faq?: Faq }) {
   type Field = "question" | "answer";
   const spell = useMemo(() => {
     const list: (SpellIssue & { field: Field })[] = [];
-    for (const field of ["question", "answer"] as Field[])
-      for (const i of checkThaiSpelling(v[field]))
-        if (!ignored.has(`${field}:${i.wrong}`)) list.push({ ...i, field });
+    for (const i of checkThaiSpelling(v.question)) {
+      if (!ignored.has(`question:${i.wrong}`)) list.push({ ...i, field: "question" });
+    }
+    for (const i of checkThaiSpelling(v.answer)) {
+      if (!ignored.has(`answer:${i.wrong}`)) list.push({ ...i, field: "answer" });
+    }
     return list;
   }, [v.question, v.answer, ignored]);
   const fixOne = (i: SpellIssue & { field: Field }) =>

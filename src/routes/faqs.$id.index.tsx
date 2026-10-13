@@ -95,11 +95,11 @@ function FaqDetail() {
         </div>
         <div>
           <p className="text-muted-foreground">สร้างเมื่อ</p>
-          <p>{fmt(faq.created_at)}</p>
+          <p suppressHydrationWarning>{fmt(faq.created_at)}</p>
         </div>
         <div>
           <p className="text-muted-foreground">แก้ไขล่าสุด</p>
-          <p>{fmt(faq.updated_at)}</p>
+          <p suppressHydrationWarning>{fmt(faq.updated_at)}</p>
         </div>
       </div>
     </div>

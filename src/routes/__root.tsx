@@ -83,15 +83,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "FAQ Management — คลังคำถามคำตอบสำหรับทีม CS" },
+      { title: "CS FAQ Management" },
       {
         name: "description",
         content: "ระบบจัดการและค้นหาคำถามคำตอบภาษาไทยสำหรับเจ้าหน้าที่ Customer Support เกม",
       },
-      { property: "og:title", content: "FAQ Management — คลังคำถามคำตอบสำหรับทีม CS" },
+      { property: "og:title", content: "CS FAQ Management" },
       {
         property: "og:description",
-        content: "ระบบจัดการและค้นหาคำถามคำตอบภาษาไทยสำหรับเจ้าหน้าที่ CS",
+        content: "ระบบจัดการและค้นหาคำถามคำตอบภาษาไทยสำหรับเจ้าหน้าที่ Customer Support เกม",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -141,7 +141,7 @@ function RootShell({ children }: { children: ReactNode }) {
           }}
         />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         {children}
         <Scripts />
       </body>
